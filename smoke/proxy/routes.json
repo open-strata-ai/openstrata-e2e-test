@@ -1,0 +1,20 @@
+{
+  "/v1/resolve": "http://localhost:8090",
+  "/v1/validate": "http://localhost:8090",
+  "/v1/registry": "http://localhost:8090",
+  "/v1/plan/": "http://localhost:8090",
+  "/v1/apply": "http://localhost:8091",
+  "/v1/rollback": "http://localhost:8091",
+  "/v1/status/": "http://localhost:8091",
+  "/v1/models": "http://localhost:8092",
+  "/v1/chat/completions": "http://localhost:8092",
+  "/v1/embeddings": "http://localhost:8092",
+  "/v1/rerank": "http://localhost:8092",
+  "/v1/datasets": "http://localhost:8000",
+  "/v1/datasets/": "http://localhost:8000",
+  "/v1/runs": "http://localhost:8000",
+  "/v1/runs/": "http://localhost:8000",
+  "/v1/reports": "http://localhost:8000",
+  "/v1/reports/": "http://localhost:8000",
+  "/healthz": "http://localhost:8090"
+}
