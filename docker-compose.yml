@@ -122,22 +122,75 @@ services:
       redis:
         condition: service_healthy
 
-  # Go services (in-memory only) — uncomment after DB adapters are implemented
-  # gateway-core:
-  #   build: ../ai-gateway-core
-  #   ports: ["8092:8092"]
-  # provisioning-engine:
-  #   build: ../ai-provisioning-engine
-  #   ports: ["8091:8091"]
-  # tool-registry:
-  #   build: ../ai-tool-registry
-  #   ports: ["8093:8093"]
-  # sandbox-manager:
-  #   build: ../ai-sandbox-manager
-  #   ports: ["8094:8094"]
-  # dependency-resolver:
-  #   build: ../ai-dependency-resolver
-  #   ports: ["8090:8090"]
+  # ── Go services (PostgreSQL/Redis adapters now implemented) ──────
+  # Set DATABASE_URL and REDIS_ADDR to use persistent backends;
+  # without them, services fall back to in-memory fakes.
+
+  gateway-core:
+    build:
+      context: ../ai-gateway-core
+    ports:
+      - "8092:8092"
+    env_file: .env
+    environment:
+      DATABASE_URL: postgres://admin:admin@postgres:5432/admin_gov?sslmode=disable
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  provisioning-engine:
+    build:
+      context: ../ai-provisioning-engine
+    ports:
+      - "8091:8091"
+    env_file: .env
+    environment:
+      DATABASE_URL: postgres://admin:admin@postgres:5432/admin_gov?sslmode=disable
+      REDIS_ADDR: redis:6379
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  tool-registry:
+    build:
+      context: ../ai-tool-registry
+    ports:
+      - "8093:8093"
+    env_file: .env
+    environment:
+      DATABASE_URL: postgres://admin:admin@postgres:5432/admin_gov?sslmode=disable
+      REDIS_ADDR: redis:6379
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  sandbox-manager:
+    build:
+      context: ../ai-sandbox-manager
+    ports:
+      - "8094:8094"
+    env_file: .env
+    environment:
+      DATABASE_URL: postgres://admin:admin@postgres:5432/admin_gov?sslmode=disable
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  dependency-resolver:
+    build:
+      context: ../ai-dependency-resolver
+    ports:
+      - "8090:8090"
+    env_file: .env
+    environment:
+      DATABASE_URL: postgres://admin:admin@postgres:5432/admin_gov?sslmode=disable
+    depends_on:
+      postgres:
+        condition: service_healthy
 
 volumes:
   pgdata:
