@@ -12,3 +12,6 @@ smoke/*venv/
 # OS
 .DS_Store
 Thumbs.db
+
+# Local env (contains credentials; use .env.example instead)
+.env
