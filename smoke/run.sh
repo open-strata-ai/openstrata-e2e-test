@@ -76,6 +76,36 @@ if [[ "$NO_EVAL" -eq 0 ]]; then
 fi
 
 # --------------------------------------------------------------------------
+# Phase 1B — Java service build (offline-capable)
+# --------------------------------------------------------------------------
+phase "Phase 1B: Java service build (offline-capable)"
+JAVA_BIN="$(command -v java || true)"
+MVN_BIN="$(command -v mvn || true)"
+JAVA_BUILT=1
+if [[ -z "$MVN_BIN" || -z "$JAVA_BIN" ]]; then
+  echo "-- WARN: mvn/java not found; skipping Java service boot (Phase 3C will GAP)"
+  JAVA_BUILT=0
+else
+  build_java() {
+    local repo="$1" jar="$2"
+    echo "-- building $repo ($jar)"
+    if ( cd "$ROOT/$repo" && mvn -o -q package -DskipTests >"$LOGDIR/build-$repo.log" 2>&1 ) \
+       && cp "$ROOT/$repo/target/$jar" "$BUILD/$jar"; then
+      echo "   ok (offline): $jar"; return 0
+    fi
+    echo "   offline build failed; retrying online..."
+    if ( cd "$ROOT/$repo" && mvn -q package -DskipTests >>"$LOGDIR/build-$repo.log" 2>&1 ) \
+       && cp "$ROOT/$repo/target/$jar" "$BUILD/$jar"; then
+      echo "   ok (online): $jar"; return 0
+    fi
+    echo "   BUILD FAILED $repo (see $LOGDIR/build-$repo.log)"
+    record FAIL "build $repo"; JAVA_BUILT=0; return 1
+  }
+  build_java ai-platform-api ai-platform-api-1.0.0.jar
+  build_java ai-admin-service  ai-admin-service-1.0.0.jar
+fi
+
+# --------------------------------------------------------------------------
 # Phase 2 — boot services
 # --------------------------------------------------------------------------
 phase "Phase 2: boot services"
@@ -111,6 +141,18 @@ if [[ "$NO_EVAL" -eq 0 ]]; then
   wait_for "$EVAL_URL/openapi.json"    && record PASS "boot eval-service"  || record FAIL "boot eval-service"
 fi
 wait_for "$PROXY_URL/healthz"         && record PASS "boot proxy"         || record FAIL "boot proxy"
+
+# Java services (boot only if they built). platform-api uses its default
+# in-memory profile; admin-service uses the `offline` H2 profile — neither
+# needs an external Postgres/Redis.
+if [[ "$JAVA_BUILT" -eq 1 ]]; then
+  start_bg platform-api env JAVA_TOOL_OPTIONS="-Xmx512m" "$JAVA_BIN" -jar "$BUILD/ai-platform-api-1.0.0.jar" --server.port="$PLATFORM_PORT"
+  start_bg admin-service env JAVA_TOOL_OPTIONS="-Xmx512m" "$JAVA_BIN" -jar "$BUILD/ai-admin-service-1.0.0.jar" --spring.profiles.active=offline --server.port="$ADMIN_PORT"
+  wait_for "$PLATFORM_URL/api/v1/agents/models"            && record PASS "boot platform-api"   || record FAIL "boot platform-api"
+  wait_for "$ADMIN_URL/api/v1/admin/package-templates"     && record PASS "boot admin-service"  || record FAIL "boot admin-service"
+else
+  echo "-- skipping Java boot (build failed / toolchain missing)"
+fi
 
 # --------------------------------------------------------------------------
 # Phase 3A — direct-API validation (each service's REAL contract)
@@ -263,6 +305,94 @@ JSON
 fi
 
 # --------------------------------------------------------------------------
+# Phase 3C — Java service scenarios (new use cases from batches D–L)
+# --------------------------------------------------------------------------
+phase "Phase 3C: Java service scenarios (new use cases)"
+
+if [[ "$JAVA_BUILT" -ne 1 ]]; then
+  record GAP "java scenarios skipped (build failed / toolchain missing)"
+else
+
+# ---- platform-api: agent lifecycle + new use cases ----
+cat >"$SMOKE_TMP/agent.json" <<'JSON'
+{"name":"smoke-agent","model":"cloud-qwen-max","memoryEnabled":false}
+JSON
+code=$(http_status "$PLATFORM_URL/api/v1/agents" POST "$SMOKE_TMP/agent.json")
+AGENT_ID=$(jget 'd.get("agentId","")')
+[[ "$code" == "201" && -n "$AGENT_ID" ]] \
+  && record PASS "platform create agent" "id=${AGENT_ID:0:8}" \
+  || record FAIL "platform create agent" "status=$code"
+
+# E1 — Consumer RBAC (EU-05): CONSUMER may GET a specific agent, but not POST.
+code=$(http_status "$PLATFORM_URL/api/v1/agents/$AGENT_ID" GET "" "X-Role: consumer")
+[[ "$code" == "200" ]] \
+  && record PASS "E1 consumer GET /agents/{id} allowed" \
+  || record FAIL "E1 consumer GET /agents/{id} allowed" "status=$code"
+code=$(http_status "$PLATFORM_URL/api/v1/agents" POST "$SMOKE_TMP/agent.json" "X-Role: consumer")
+[[ "$code" == "403" ]] \
+  && record PASS "E1 consumer POST /agents forbidden" \
+  || record FAIL "E1 consumer POST /agents forbidden" "status=$code"
+
+# F2 — SRS skill binding (DV-06, TA-08)
+code=$(http_status "$PLATFORM_URL/api/v1/agents/$AGENT_ID/skills/sql:bind" POST)
+[[ "$code" == "200" ]] \
+  && record PASS "F2 bind skill sql" \
+  || record FAIL "F2 bind skill sql" "status=$code"
+code=$(http_status "$PLATFORM_URL/api/v1/agents/$AGENT_ID/skills" GET)
+inskill=$(jget "'sql' in d")
+[[ "$code" == "200" && "$inskill" == "True" ]] \
+  && record PASS "F2 list bound skills includes sql" \
+  || record FAIL "F2 list bound skills includes sql" "status=$code inskill=$inskill"
+
+# G2 — eval trigger (DV-09, DV-17)
+code=$(http_status "$PLATFORM_URL/api/v1/agents/$AGENT_ID/eval:trigger?datasetId=ds-smoke" POST)
+RUN_ID=$(jget 'd.get("runId","")')
+[[ "$code" == "202" && -n "$RUN_ID" ]] \
+  && record PASS "G2 eval trigger" "run=$RUN_ID" \
+  || record FAIL "G2 eval trigger" "status=$code"
+code=$(http_status "$PLATFORM_URL/api/v1/agents/$AGENT_ID/eval" GET)
+inrun=$(jget "'$RUN_ID' in d")
+[[ "$code" == "200" && "$inrun" == "True" ]] \
+  && record PASS "G2 eval reports include run" \
+  || record FAIL "G2 eval reports include run" "status=$code inrun=$inrun"
+
+# PA-06 — model whitelist endpoint (returns the authorized model list)
+code=$(http_status "$PLATFORM_URL/api/v1/agents/models" GET)
+isml=$(jget 'isinstance(d, list)')
+[[ "$code" == "200" && "$isml" == "True" ]] \
+  && record PASS "PA-06 model whitelist endpoint" \
+  || record FAIL "PA-06 model whitelist endpoint" "status=$code isml=$isml"
+
+# ---- admin-service: package template CRUD (PA-04, Batch H2) ----
+cat >"$SMOKE_TMP/tmpl.json" <<'JSON'
+{"name":"starter-pack","tier":"basic","components":["gateway","tool-registry"],"quotaPolicy":"q1"}
+JSON
+code=$(http_status "$ADMIN_URL/api/v1/admin/package-templates" POST "$SMOKE_TMP/tmpl.json")
+TMPL_ID=$(jget 'd.get("id","")')
+[[ "$code" == "201" && -n "$TMPL_ID" ]] \
+  && record PASS "admin create package-template" "id=${TMPL_ID:0:8}" \
+  || record FAIL "admin create package-template" "status=$code"
+code=$(http_status "$ADMIN_URL/api/v1/admin/package-templates" GET)
+inlist=$(jget '"starter-pack" in [t.get("name","") for t in d]')
+[[ "$code" == "200" && "$inlist" == "True" ]] \
+  && record PASS "admin list package-templates" \
+  || record FAIL "admin list package-templates" "status=$code inlist=$inlist"
+code=$(http_status "$ADMIN_URL/api/v1/admin/package-templates/$TMPL_ID" GET)
+[[ "$code" == "200" ]] \
+  && record PASS "admin get package-template" \
+  || record FAIL "admin get package-template" "status=$code"
+code=$(http_status "$ADMIN_URL/api/v1/admin/package-templates/$TMPL_ID" DELETE)
+[[ "$code" == "204" ]] \
+  && record PASS "admin delete package-template" \
+  || record FAIL "admin delete package-template" "status=$code"
+code=$(http_status "$ADMIN_URL/api/v1/admin/package-templates/$TMPL_ID" GET)
+[[ "$code" == "404" ]] \
+  && record PASS "admin package-template gone after delete" \
+  || record FAIL "admin package-template gone after delete" "status=$code"
+
+fi
+
+# --------------------------------------------------------------------------
 # Phase 4 — report
 # --------------------------------------------------------------------------
 phase "Phase 4: report"
@@ -271,7 +401,7 @@ REPORT="$SMOKE/report.md"
   echo "# OpenStrata cross-repo smoke test — report"
   echo
   echo "Generated: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
-  echo "Branch: feat/codegen-260718"
+  echo "Branch: feat/smoke-harness"
   echo
   echo "## Results"
   echo
@@ -286,12 +416,12 @@ REPORT="$SMOKE/report.md"
   echo
   echo "- PASS: $np"
   echo "- FAIL: $nf"
-  echo "- GAP (known contract mismatch): $ng"
+  echo "- GAP (known contract mismatch / skipped): $ng"
   echo
   echo "## Notes"
   echo
   echo "- Services boot offline (in-memory/fakes); no external deps required."
-  echo "- Phase 3A validates each service against its REAL HTTP contract."
+  echo "- Phase 3A validates each Go/Python service against its REAL HTTP contract."
   echo "- Phase 3B drives aictl through one proxy endpoint. The 4 previously"
   echo "  broken CLI<->service contract mismatches are now FIXED:"
   echo "    * plan  -> resolver  (/v1/resolve, tenant_id + enabled:map)"
@@ -299,6 +429,11 @@ REPORT="$SMOKE/report.md"
   echo "    * eval  -> eval-service (/v1/runs, RunCreate body)"
   echo "    * model -> gateway (/v1/models, {object,data} envelope unwrap)"
   echo "  See the gap-audit section in smoke/README.md for the original analysis."
+  echo "- Phase 3C exercises the Java services end-to-end for the new use cases:"
+  echo "    * platform-api boots on its DEFAULT in-memory profile (no DB)."
+  echo "    * admin-service boots on the OFFLINE H2 profile (no Postgres/Redis)."
+  echo "    * Covers E1 consumer RBAC, F2 SRS skill binding, G2 eval trigger,"
+  echo "      PA-06 model whitelist, and H2 package-template CRUD."
 } >"$REPORT"
 
 echo

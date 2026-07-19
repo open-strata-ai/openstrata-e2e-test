@@ -16,5 +16,8 @@
   "/v1/runs/": "http://localhost:8000",
   "/v1/reports": "http://localhost:8000",
   "/v1/reports/": "http://localhost:8000",
+  "/api/v1/agents": "http://localhost:8081",
+  "/api/v1/models": "http://localhost:8081",
+  "/api/v1/admin": "http://localhost:8088",
   "/healthz": "http://localhost:8090"
 }
