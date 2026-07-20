@@ -1,0 +1,196 @@
+# OpenStrata E2E Test — Docker Compose
+#
+# Starts the shared infrastructure (PostgreSQL, Redis) and builds + boots
+# all services that have wired-up external-dependency code.
+#
+# Usage:
+#   docker compose up -d              # infra + all wired services
+#   docker compose up -d postgres redis   # infra only
+#   docker compose logs -f            # follow all logs
+#
+# Prerequisites: all 18 OpenStrata repos cloned as siblings of this repo.
+#   ~/workspace/
+#     ai-admin-service/
+#     ai-eval-service/
+#     ...
+#     openstrata-e2e-test/     # you are here
+
+services:
+
+  # Infrastructure
+  postgres:
+    image: postgres:16-alpine
+    env_file: .env
+    environment:
+      POSTGRES_DB: openstrata
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./infra/postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin -d openstrata"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+
+  # Java services (PostgreSQL wired via Flyway + JPA)
+  admin-service:
+    build:
+      context: ../ai-admin-service
+    ports:
+      - "8088:8088"
+    env_file: .env
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/admin_gov
+      SPRING_DATASOURCE_USERNAME: admin
+      SPRING_DATASOURCE_PASSWORD: admin
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  billing-service:
+    build:
+      context: ../ai-billing-service
+    ports:
+      - "8084:8084"
+    env_file: .env
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/billing
+      SPRING_DATASOURCE_USERNAME: billing
+      SPRING_DATASOURCE_PASSWORD: billing
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  srs-service:
+    build:
+      context: ../ai-srs-service
+    ports:
+      - "8083:8083"
+    env_file: .env
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/srs
+      SPRING_DATASOURCE_USERNAME: srs
+      SPRING_DATASOURCE_PASSWORD: srs
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  platform-api:
+    build:
+      context: ../ai-platform-api
+    ports:
+      - "8081:8081"
+    env_file: .env
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/platform_api
+      SPRING_DATASOURCE_USERNAME: platform
+      SPRING_DATASOURCE_PASSWORD: platform
+      SPRING_JPA_HIBERNATE_DDL_AUTO: validate
+      SPRING_FLYWAY_ENABLED: "true"
+      SPRING_FLYWAY_LOCATIONS: classpath:db/migration
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # Python service (PostgreSQL + Redis wired)
+  eval-service:
+    build:
+      context: ../ai-eval-service
+    ports:
+      - "8000:8000"
+    env_file: .env
+    environment:
+      EVAL_MODE: production
+      PGDSN: postgresql://eval_user:eval@postgres:5432/eval?sslmode=disable
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # ── Go services (PostgreSQL/Redis adapters now implemented) ──────
+  # Set DATABASE_URL and REDIS_ADDR to use persistent backends;
+  # without them, services fall back to in-memory fakes.
+
+  gateway-core:
+    build:
+      context: ../ai-gateway-core
+    ports:
+      - "8092:8092"
+    env_file: .env
+    environment:
+      DATABASE_URL: postgres://admin:admin@postgres:5432/admin_gov?sslmode=disable
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  provisioning-engine:
+    build:
+      context: ../ai-provisioning-engine
+    ports:
+      - "8091:8091"
+    env_file: .env
+    environment:
+      DATABASE_URL: postgres://admin:admin@postgres:5432/admin_gov?sslmode=disable
+      REDIS_ADDR: redis:6379
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  tool-registry:
+    build:
+      context: ../ai-tool-registry
+    ports:
+      - "8093:8093"
+    env_file: .env
+    environment:
+      DATABASE_URL: postgres://admin:admin@postgres:5432/admin_gov?sslmode=disable
+      REDIS_ADDR: redis:6379
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  sandbox-manager:
+    build:
+      context: ../ai-sandbox-manager
+    ports:
+      - "8094:8094"
+    env_file: .env
+    environment:
+      DATABASE_URL: postgres://admin:admin@postgres:5432/admin_gov?sslmode=disable
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  dependency-resolver:
+    build:
+      context: ../ai-dependency-resolver
+    ports:
+      - "8090:8090"
+    env_file: .env
+    environment:
+      DATABASE_URL: postgres://admin:admin@postgres:5432/admin_gov?sslmode=disable
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  pgdata:
