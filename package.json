@@ -1,0 +1,15 @@
+{
+  "name": "openstrata-e2e-test",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "wiring-lint": "python3 harness/wiring-lint/check-wiring.py",
+    "test:unit": "npm --prefix ../ai-guide-portal run test:ci && npm --prefix ../ai-portal-frontend run test:ci && npm --prefix ../ai-admin-frontend run test:ci",
+    "test:e2e": "playwright test",
+    "test:e2e:list": "playwright test --list"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.47.0"
+  }
+}
