@@ -43,3 +43,44 @@ cd smoke
 
 The `openstrata-e2e-test` repo is part of the
 [open-strata-ai](https://github.com/open-strata-ai) GitHub org.
+
+## Configuration: `.env` vs `.env.example`
+
+`docker-compose.yml` is driven by environment variables. The actual `.env`
+file is **gitignored** (secret-free but machine-local), so it is **never
+committed**. A tracked `.env.example` is provided as the template.
+
+**After cloning, create your local `.env` once:**
+
+```bash
+cp .env.example .env
+```
+
+`docker-compose.yml` already supplies safe built-in defaults for every
+variable (e.g. `${GUIDE_DB_USER:-guide}`), so the stack boots even if a
+variable is absent from your `.env`. Edit `.env` only to override defaults
+(e.g. a different Postgres password).
+
+### Guide service notes
+
+- `guide-service` (port **8080**) connects to the `guide` Postgres database.
+- The `guide` **role** and **database** are created automatically by
+  `infra/postgres/init/01-databases.sh` — but **only on a fresh Postgres
+  volume** (first `docker compose up -d` with an empty data dir).
+- If you are reusing an **already-initialized** Postgres volume, the init
+  script will not re-run. Create them manually:
+
+  ```bash
+  docker compose exec postgres psql -U admin -d postgres -c \
+    "DO \$\$ BEGIN
+       IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname='guide') THEN
+         CREATE USER guide WITH PASSWORD 'guide'; END IF;
+     END \$\$;"
+  docker compose exec postgres psql -U admin -d postgres -c \
+    "CREATE DATABASE guide OWNER guide;"
+  ```
+
+- Run it: `docker compose up -d guide-service` (waits for `postgres` healthy).
+  The schema is generated from the JPA entities (`spring.jpa.hibernate.ddl-auto:
+  update`; Flyway is disabled to avoid the Postgres 16 / Flyway 10 incompatibility).
+
