@@ -1,0 +1,37 @@
+{
+  "guide-portal": {
+    "repo": "ai-guide-portal",
+    "expectedProxyPort": 8080,
+    "expectedRuntimeBasePort": 8080,
+    "proxyEnvVar": "VITE_GUIDE_API_BASE",
+    "probeBase": "http://localhost:8080",
+    "endpoints": [
+      { "method": "GET", "path": "/api/v1/capabilities", "note": "guide capability catalog" },
+      { "method": "POST", "path": "/api/v1/plans/preview", "note": "guide plan preview" }
+    ]
+  },
+  "admin-frontend": {
+    "repo": "ai-admin-frontend",
+    "expectedProxyPort": 8088,
+    "expectedRuntimeBasePort": 8088,
+    "proxyEnvVar": "VITE_ADMIN_API_BASE",
+    "probeBase": "http://localhost:8088",
+    "endpoints": [
+      { "method": "GET", "path": "/api/v1/admin/tenants", "note": "governance: tenant list" },
+      { "method": "GET", "path": "/api/v1/admin/global-resources", "note": "dashboard governance view" },
+      { "method": "GET", "path": "/api/v1/admin/gpu-pool", "note": "resources: GPU pool" },
+      { "method": "GET", "path": "/api/v1/admin/audit", "note": "audit log" }
+    ]
+  },
+  "portal-frontend": {
+    "repo": "ai-portal-frontend",
+    "expectedProxyPort": 8092,
+    "expectedRuntimeBasePort": 8092,
+    "proxyEnvVar": "VITE_API_BASE",
+    "probeBase": "http://localhost:8092",
+    "endpoints": [
+      { "method": "GET", "path": "/v1/agents", "note": "agent registry (EU-05)" },
+      { "method": "GET", "path": "/v1/models", "expectNonEmptyData": true, "note": "models catalog; known seed gap returns data:null -> blank page" }
+    ]
+  }
+}

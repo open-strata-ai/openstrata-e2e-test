@@ -1,17 +1,4 @@
-# Build artifacts
-smoke/bin/
-smoke/logs/
-smoke/report.md
-
-# Python
-**/__pycache__/
-**/*.pyc
-.venv/
-smoke/*venv/
-
-# OS
-.DS_Store
-Thumbs.db
-
-# Local env (contains credentials; use .env.example instead)
-.env
+node_modules/
+test-results/
+playwright-report/
+.env.local
