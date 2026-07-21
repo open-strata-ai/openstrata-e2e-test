@@ -2,3 +2,21 @@ node_modules/
 test-results/
 playwright-report/
 .env.local
+
+# Secrets (never commit; tracked template is .env.example)
+.env
+
+# Build artifacts
+smoke/bin/
+smoke/logs/
+smoke/report.md
+
+# Python
+**/__pycache__/
+**/*.pyc
+.venv/
+smoke/*venv/
+
+# OS
+.DS_Store
+Thumbs.db
