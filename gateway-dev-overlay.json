@@ -1,0 +1,7 @@
+{
+  "modelRouting": {
+    "default": "cloud-qwen-max",
+    "fallbackChain": ["cloud-gpt-4o"],
+    "costAware": false
+  }
+}

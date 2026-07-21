@@ -13,6 +13,11 @@ RESULTS=()
 record() {
   local st="$1"; shift
   RESULTS+=("$st|$*")
+  case "$st" in
+    PASS) PASS=$(( ${PASS:-0} + 1 )) ;;
+    FAIL) FAIL=$(( ${FAIL:-0} + 1 )) ;;
+    GAP)  GAP=$(( ${GAP:-0} + 1 )) ;;
+  esac
   printf '  [%s] %s\n' "$st" "$*"
 }
 
