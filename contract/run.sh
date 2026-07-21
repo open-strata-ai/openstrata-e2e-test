@@ -37,6 +37,16 @@ MODELS=$(curl -s "$GATEWAY_URL/v1/models" | python3 -c "import sys,json; d=json.
 [[ "$MODELS" -gt 0 ]] && record PASS "gateway lists models" "count=$MODELS" || record FAIL "gateway lists models"
 
 echo
+echo "--- admin governance surface (ai-admin-service) ---"
+ADM=http://localhost:8088
+TEN=$(http_status "$ADM/api/v1/admin/tenants" GET "" "$HDR")
+if [[ "$TEN" =~ ^2 ]]; then record PASS "admin lists tenants"; else record FAIL "admin lists tenants" "code=$TEN (needs ai-admin-service on :8088)"; fi
+GOV=$(http_status "$ADM/api/v1/admin/global-resources" GET "" "$HDR")
+if [[ "$GOV" =~ ^2 ]]; then record PASS "admin global-resources"; else record FAIL "admin global-resources" "code=$GOV (needs ai-admin-service on :8088)"; fi
+AUD=$(http_status "$ADM/api/v1/admin/audit" GET "" "$HDR")
+if [[ "$AUD" =~ ^2 ]]; then record PASS "admin audit log"; else record FAIL "admin audit log" "code=$AUD (needs ai-admin-service on :8088)"; fi
+
+echo
 echo "--- eval-service run lifecycle ---"
 EVAL_URL=http://localhost:8000
 # Create dataset

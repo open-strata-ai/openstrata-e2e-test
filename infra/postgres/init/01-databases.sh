@@ -21,12 +21,15 @@ psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-E
         IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'eval_user') THEN
             CREATE USER eval_user WITH PASSWORD 'eval';
         END IF;
+        IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'guide') THEN
+            CREATE USER guide WITH PASSWORD 'guide';
+        END IF;
     END
     \$\$;
 EOSQL
 
 # Create databases — must run outside a transaction block.
-for db in "admin_gov OWNER admin" "billing OWNER billing" "srs OWNER srs" "platform_api OWNER platform" "eval OWNER eval_user"; do
+for db in "admin_gov OWNER admin" "billing OWNER billing" "srs OWNER srs" "platform_api OWNER platform" "eval OWNER eval_user" "guide OWNER guide"; do
     name="${db%% *}"
     psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" -c "CREATE DATABASE $db;" 2>/dev/null || echo "  -> $name already exists, skipping"
 done

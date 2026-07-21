@@ -106,6 +106,27 @@ services:
       postgres:
         condition: service_healthy
 
+  # Guide assembly backend (PostgreSQL wired via JPA; ddl-auto: update).
+  guide-service:
+    build:
+      context: ../ai-guide-service
+    ports:
+      - "8080:8080"
+    env_file: .env
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/guide
+      # Defaults keep the service bootable in a fresh clone even though `.env`
+      # is gitignored; override via .env (GUIDE_DB_USER/GUIDE_DB_PASSWORD) locally.
+      SPRING_DATASOURCE_USERNAME: ${GUIDE_DB_USER:-guide}
+      SPRING_DATASOURCE_PASSWORD: ${GUIDE_DB_PASSWORD:-guide}
+      # Schema is generated from the JPA entities (ddl-auto: update) to avoid the
+      # Flyway/PostgreSQL-16 compatibility constraint in this environment.
+      SPRING_JPA_HIBERNATE_DDL_AUTO: update
+      SPRING_FLYWAY_ENABLED: "false"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   # Python service (PostgreSQL + Redis wired)
   eval-service:
     build:
