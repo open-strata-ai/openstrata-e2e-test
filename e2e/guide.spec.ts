@@ -20,8 +20,10 @@ test.describe('EU-06 guide authoring', () => {
   });
 
   test('Confirm & apply applies the plan (EU-06)', async ({ page }) => {
+    // Real flow: wizard -> plan preview -> apply. Each step advances the route.
     await page.goto(GUIDE + '/wizard');
     await page.getByRole('button', { name: /Next: preview plan/i }).click();
+    await page.getByRole('button', { name: /Next: apply/i }).click();
     await page.getByRole('button', { name: /Confirm & apply/i }).click();
     await expect(page.getByText(/applied|ready/i).first()).toBeVisible();
   });
