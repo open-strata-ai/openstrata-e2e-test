@@ -12,9 +12,18 @@ test.describe('EU-06 guide authoring', () => {
     await expect(page).toHaveURL(/[?&](tab|profile)=starter/);
   });
 
+  test('Selecting a profile loads its default modules (RC-6)', async ({ page }) => {
+    // Deep-linking ?profile=standard must auto-select that profile's default
+    // capabilities, which enables the "Next: preview plan" action.
+    await page.goto(GUIDE + '/wizard?profile=standard');
+    await expect(page.getByRole('button', { name: /Next: preview plan/i })).toBeEnabled();
+  });
+
   test('Confirm & apply applies the plan (EU-06)', async ({ page }) => {
+    // Real flow: wizard -> plan preview -> apply. Each step advances the route.
     await page.goto(GUIDE + '/wizard');
     await page.getByRole('button', { name: /Next: preview plan/i }).click();
+    await page.getByRole('button', { name: /Next: apply/i }).click();
     await page.getByRole('button', { name: /Confirm & apply/i }).click();
     await expect(page.getByText(/applied|ready/i).first()).toBeVisible();
   });

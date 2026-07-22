@@ -14,6 +14,10 @@ test('DV-01 create AgentSpec persists and appears in the Agents list', async ({ 
   await page.getByRole('button', { name: /New Agent/i }).click();
   const name = 'E2E-' + Date.now();
   await page.getByPlaceholder('Agent name').fill(name);
+  // RC-12: add a state to the state machine before saving — proves the full
+  // spec (incl. stateMachine) round-trips through the gateway, not just the name.
+  await page.getByPlaceholder('State name').fill('start');
+  await page.getByRole('button', { name: /Add state/i }).click();
   await page.getByRole('button', { name: /Create AgentSpec/i }).click();
   await page.goto(PORTAL + '/agents');
   await expect(page.getByText(name)).toBeVisible({ timeout: 10000 });
